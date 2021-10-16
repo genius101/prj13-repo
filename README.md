@@ -1,98 +1,175 @@
-[![nginx 1.17.2](https://img.shields.io/badge/nginx-1.17.2-brightgreen.svg?&logo=nginx&logoColor=white&style=for-the-badge)](https://nginx.org/en/CHANGES) [![php 7.3.8](https://img.shields.io/badge/php--fpm-7.3.8-blue.svg?&logo=php&logoColor=white&style=for-the-badge)](https://secure.php.net/releases/7_3_8.php)
+# ANSIBLE DYNAMIC ASSIGNMENTS (INCLUDE) AND COMMUNITY ROLES
+
+Well, from Project 12, you can already tell that static assignments use import Ansible module. The module that enables dynamic assignments is <b>include</b>.
+
+    import = Static
+    include = Dynamic
+
+When the import module is used, all statements are pre-processed at the time playbooks are parsed. Meaning, when you execute site.yml playbook, Ansible will process all the playbooks referenced during the time it is parsing the statements. This also means that, during actual execution, if any statement changes, such statements will not be considered. Hence, it is static.
+
+On the other hand, when include module is used, all statements are processed only during execution of the playbook. Meaning, after the statements are parsed, any changes to the statements encountered during execution will be used.
 
 
-## Introduction
-This is a Dockerfile to build a debian based container image running nginx and php-fpm 7.3.x / 7.2.x / 7.1.x / 7.0.x & Composer.
+## Part 1 – Introducing Dynamic Assignment Into Our structure
 
-### Versioning
-| Docker Tag | GitHub Release | Nginx Version | PHP Version | Debian Version |
-|-----|-------|-----|--------|--------|
-| latest | master Branch |1.17.2 | 7.3.8 | buster |
+In your https://github.com/your-name/ansible-config-mgt GitHub repository start a new branch and call it dynamic-assignments.
 
+Create a new folder, name it dynamic-assignments. Then inside this folder, create a new file and name it env-vars.yml. We will instruct site.yml to include this playbook later.</p>
 
-## How to use this repository
-The build is automatically triggered by a git push to your feature/[branch]
+Your GitHub shall have following structure by now:
 
-## First clone the repository to your workstation
-```
-$ git clone https://gitlab.com/propitix/microservices/php-frontend.git
-$ cd frontend-propitix
-```
+    ├── dynamic-assignments
+    │   └── env-vars.yml
+    ├── inventory
+    │   └── dev
+        └── stage
+        └── uat
+        └── prod
+    └── playbooks
+        └── site.yml
+    └── roles (optional folder)
+        └──...(optional subfolders & files)
+    └── static-assignments
+        └── common.yml
 
-Create a feature branch. # Always start with feature/[name of your branch]
-```
-git branch -b feature/add-css-style-to-about-us-page
-```
+Create a new folder env-vars, then for each environment, create new YAML files which we will use to set variables.
 
+Your layout should now look like this.
 
-Update the application code in
-```
-./html/
-```
+    ├── dynamic-assignments
+    │   └── env-vars.yml
+    ├── env-vars
+        └── dev.yml
+        └── stage.yml
+        └── uat.yml
+        └── prod.yml
+    ├── inventory
+        └── dev
+        └── stage
+        └── uat
+        └── prod
+    ├── playbooks
+        └── site.yml
+    └── static-assignments
+        └── common.yml
+        └── webservers.yml
+ 
+Now paste the instruction below into the env-vars.yml file:
 
-Then add/commit/push to gitlab
+    ---
+    - name: collate variables from env specific file, if it exists
+      hosts: all
+      tasks:
+        - name: looping through list of available files
+          include_vars: "{{ item }}"
+          with_first_found:
+            - files:
+                - dev.yml
+                - stage.yml
+                - prod.yml
+                - uat.yml
+              paths:
+                - "{{ playbook_dir }}/../env-vars"
+          tags:
+            - always
 
-```
-git status # to see your changes
-```
+Update site.yml file to make use of the dynamic assignment:
 
-```
-git add --all # If you are satisfied with your changes and willing to push everything. Otherwise, select only the files to add
-```
+    ---
+    - hosts: all
+    - name: Include dynamic variables 
+      tasks:
+      import_playbook: ../static-assignments/common.yml 
+      include: ../dynamic-assignments/env-vars.yml
+      tags:
+        - always
 
-```
-git commit -m "Put some message about this push here"
-```
+    -  hosts: webservers
+    - name: Webserver assignment
+      import_playbook: ../static-assignments/webservers.yml
+  
+To preserve our GitHub in actual state after we install a new role; make a commit and push to master your ‘ansible-config-mgt’ directory.
+  
+Now it is time to create a role for MySQL database – it should install the MySQL package, create a database and configure users. With Ansible Galaxy, we can simply download a ready to use ansible role, and keep going.
 
-## Push your changes to gitlab, and merge to dev branch
-```
-git push --set-upstream origin feature/[Your branch name]
-```
+Download Mysql Ansible Role: We will be using a MySQL role developed by geerlingguy
 
-### Validate your changes have been triggered by gitlab-ci in
-[propitix-scm] (https://gitlab.com/propitix/microservices/frontend-propitix)
+On Jenkins-Ansible server make sure that git is installed with git --version, then go to ‘ansible-config-mgt’ directory and run:
 
-### Check the image have been pushed to
-[Google Container Registry] (https://console.cloud.google.com/gcr/images/non-prod-pdz/EU/frontend-propitix?project=non-prod-pdz&authuser=1&gcrImageListsize=30) (Depending on the environment. Either non-prod or prod)
+    git init
+    git pull https://github.com/<your-name>/ansible-config-mgt.git
+    git remote add origin https://github.com/<your-name>/ansible-config-mgt.git
+    git branch roles-feature
+    git switch roles-feature
 
-## pulling the image
-```
-docker pull eu.gcr.io/$environment/frontend-propitix:$tag-version
-```
+Inside roles directory create your new MySQL role with:
 
-## Running (You can do this step without the pulling the above as it will put down if not found locally)
-To run the container:
-```
-$ docker run -d eu.gcr.io/$environment/frontend-propitix:$tag-version
-```
+    ansible-galaxy install geerlingguy.mysql
 
-Default web root:
-```
-/usr/share/nginx/html
-```
+Rename the folder to mysql:
 
-## If you require permissions to GCP, or Gitlab resources, please talk to dare@propitix.com
+    mv geerlingguy.mysql/ mysql
 
-## This is an update to Jenkins
+Read README.md file, and edit roles configuration to use correct credentials for MySQL required for the tooling website.
 
-## This is the new update
+Now it is time to upload the changes into your GitHub:
 
-## I have updated the SSH Plugin
+    git add .
+    git commit -m "Commit new role files into GitHub"
+    git push --set-upstream origin roles-feature
 
-## I am in the blocker session
+We want to be able to choose which Load Balancer to use, Nginx or Apache, so we need to have two roles respectively:
 
-## Lets trigger you here
+- Nginx
+- Apache
 
-## EC@ has power
+Decide if you want to develop your own roles, or find available ones from the community. In this case we got our roles from Ansible Galaxy with these commands:
 
-## THis is a trigger for ansible
+    ansible-galaxy install geerlingguy.apache
+    ansible-galaxy install geerlingguy.nginx
 
-## Triger Artifacts
+Update both static-assignment and site.yml files to refer the roles
 
-## Test For Copy Artifacts
+Since you cannot use both Nginx and Apache load balancer, you need to add a condition to enable either one – this is where you can make use of variables.
 
-## Webhook IP Update
+Declare a variable in defaults/main.yml file inside the Nginx and Apache roles. Name each variables enable_nginx_lb and enable_apache_lb respectively.
 
-## Update for 12th
+Set both values to false like this enable_nginx_lb: false and enable_apache_lb: false.
 
-## Update for 14th
+Declare another variable in both roles load_balancer_is_required and set its value to false as well
+
+Update both assignment and site.yml files respectively
+
+- loadbalancers.yml file
+
+      - hosts: lb
+        roles:
+          - { role: nginx, when: enable_nginx_lb and load_balancer_is_required }
+          - { role: apache, when: enable_apache_lb and load_balancer_is_required }
+
+- site.yml file
+
+       - name: Loadbalancers assignment
+         hosts: lb
+           - import_playbook: ../static-assignments/loadbalancers.yml
+          when: load_balancer_is_required 
+
+Now you can make use of env-vars\uat.yml file to define which loadbalancer to use in UAT environment by setting respective environmental variable to true.
+
+You will activate load balancer, and enable nginx by setting these in the respective environment’s env-vars file.
+
+    enable_nginx_lb: true
+    load_balancer_is_required: true
+
+Run the Ansible Playbook:
+
+    ansible-playbook -i inventory/uat playbooks/site.yml
+
+### NB: Please note that Database and Load Balance instance has been changed from Ubuntu to RedHat, so the Private IPs has been affected as well
+
+- Change nginx_user to just nginx in Ansible-config-mgt/roles/nginx/templates/nginx.conf.j2
+ 
+- Also modified to add Upstream details in Ansible-config-mgt/roles/nginx/templates/nginx.conf.j2
+
+  
+  
